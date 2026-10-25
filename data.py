@@ -76,3 +76,5 @@ def hide_answers(homes, track):
     """
     hidden = AFTER_SALE_COLUMNS + (["list_price"] if track == "off_market" else [])
     return homes.drop(columns=[c for c in hidden if c in homes.columns])
+
+
