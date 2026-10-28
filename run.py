@@ -1,6 +1,7 @@
 """Run the whole pipeline. From this folder:
 
-    python run.py validate   test the models on the last six months of sales
+    python run.py validate   test the models on the last five months of sales (not including the most recent month)
+    python run.py xgValidate test the model on 2025-12 to 2026-04 (don't include 2026-05; used for final model test after choosing best model)
     python run.py report     score those predictions and draw a figure
     python run.py predict    predict the test homes and write the two submission files
     python run.py check      check the submission files before you hand them in
@@ -22,7 +23,7 @@ ROOT = Path(__file__).parent
 TRACKS = ["off_market", "list_aware"]
 # Walk-forward validation: each of these months is predicted by models trained only
 # on the sales before that month, the same way the real test works.
-VALIDATION_MONTHS = pd.period_range("2025-12", "2026-05", freq="M")
+VALIDATION_MONTHS = pd.period_range("2025-12", "2026-04", freq="M")
 
 
 def validate():
@@ -44,6 +45,37 @@ def validate():
     pd.concat(results).to_csv(path, index=False)
     print(f"Wrote {path.relative_to(ROOT)}")
 
+def xgValidate():
+    listings = data.load("listings")
+    results = []
+    for month in VALIDATION_MONTHS:
+        
+        #The month we are testing on:
+        homes = listings[listings["date_sold"].dt.to_period("M") == month]
+        #Allocating 3 months before the testing to improve the model until the validation error increases
+        val_start = month - 3
+        val_end = month - 1
+        val_mask = (listings["date_sold"].dt.to_period("M") >= val_start) & \
+                    (listings["date_sold"].dt.to_period("M") <= val_end)
+        val_homes = listings[val_mask]
+
+        #Leaving the rest for trainning
+        train = listings[listings["date_sold"] < val_start.start_time]
+        for track in TRACKS:
+            model = models.make_model(track).fit(train, val_homes)
+            predicted = model.predict(data.hide_answers(homes, track))
+            results.append(pd.DataFrame({
+                "ml_num": homes["ml_num"], "track": track, "month": str(month),
+                "house_type_name": homes["house_type_name"], "sold_price": homes["sold_price"],
+                "predicted_price": np.round(predicted)}))
+        print(f"{month}: trained on {len(train):,} earlier sales, predicted {len(homes):,} homes")
+    path = ROOT / "outputs" / "val_predictions.csv"
+    path.parent.mkdir(exist_ok=True)
+    pd.concat(results).to_csv(path, index=False)
+    print(f"Wrote {path.relative_to(ROOT)}")
+
+def stuff():
+    print("TEST")
 
 def bootstrap_ci(values, statistic, repeats=1000):
     """95% interval: recompute the statistic on 1,000 resamples of the homes
@@ -68,7 +100,7 @@ def metrics(predictions):
 
 
 def report():
-    path = ROOT / "outputs" / "validation_predictions.csv"
+    path = ROOT / "outputs" / "val_predictions.csv"
     if not path.exists():
         sys.exit(f"{path} does not exist yet: run `python run.py validate` first")
     predictions = pd.read_csv(path)
@@ -166,7 +198,7 @@ def check():
     return check_all(ROOT / "submissions")
 
 
-COMMANDS = {"validate": validate, "report": report, "predict": predict, "check": check}
+COMMANDS = {"validate": validate, "report": report, "predict": predict, "check": check, "xgValidate": xgValidate}
 
 if __name__ == "__main__":
     if len(sys.argv) != 2 or sys.argv[1] not in COMMANDS:

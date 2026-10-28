@@ -9,6 +9,7 @@ deliberately simple, so you can measure how much your own ideas add.
 """
 import numpy as np
 from sklearn.ensemble import HistGradientBoostingRegressor
+from xgboost import XGBRegressor
 
 import features
 
@@ -16,10 +17,18 @@ import features
 def make_model(track):
     """Return a fresh, untrained model for "off_market" or "list_aware"."""
     if track == "list_aware":
-        return ListPriceBaseline()
-        # return FeatureModel(features.list_aware_features)   # try this instead
-    return NearestSalesBaseline(k=10)
-    # return FeatureModel(features.off_market_features)       # try this instead
+        # return ListPriceBaseline()
+        return DanielFeatureModel(features.list_aware_features)   # try this instead
+    # return NearestSalesBaseline(k=10)
+    return DanielFeatureModel(features.off_market_features)       # try this instead
+
+def make_model(track):
+    """Return a fresh, untrained model for "off_market" or "list_aware"."""
+    if track == "list_aware":
+        # return ListPriceBaseline()
+        return DanielFeatureModel(features.list_aware_features)   # try this instead
+    # return NearestSalesBaseline(k=10)
+    return DanielFeatureModel(features.off_market_features)       # try this instead
 
 
 class ListPriceBaseline:
@@ -86,6 +95,37 @@ class FeatureModel:
 
     def fit(self, train):
         self.model.fit(self.make_features(train), np.log(train["sold_price"]))
+        return self
+
+    def predict(self, homes):
+        return np.exp(self.model.predict(self.make_features(homes)))
+
+class DanielFeatureModel:
+    """A machine-learning model (XG boost) on the features in features.py.
+
+    It learns log(price) rather than price, so a 10% miss on a cheap condo counts
+    as much as a 10% miss on an expensive house. Not used until you switch it on
+    in make_model().
+    """
+
+    def __init__(self, make_features):
+        self.make_features = make_features
+        self.model = XGBRegressor(
+            n_estimators=1000,          # Set a high maximum number of trees
+            learning_rate=0.1, 
+            early_stopping_rounds=50,   # Stop if the error doesn't improve for 50 consecutive trees
+            random_state=0
+        )
+    def fit(self, train, mini_val):
+        # self.model.fit(self.make_features(train), np.log(train["sold_price"]))
+        X_train = self.make_features(train)
+        y_train = np.log(train["sold_price"])
+        self.model.fit(
+            X_train, 
+            y_train,
+            eval_set=[(self.make_features(mini_val), np.log(mini_val["sold_price"]))],  # The model checks this data to monitor improvement
+            verbose=True                # Set to True to see the error metric print out as it trains
+        )
         return self
 
     def predict(self, homes):
