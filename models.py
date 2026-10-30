@@ -13,6 +13,7 @@ from xgboost import XGBRegressor
 from catboost import CatBoostRegressor
 import features
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import KMeans
 import pandas as pd
 
 def make_model(track):
@@ -137,6 +138,8 @@ class CatBoostFeatureModel:
     """
 
     def __init__(self, make_features):
+        # 1. Initialize the K-Means model (e.g., 50 custom neighborhoods)
+        self.kmeans = KMeans(n_clusters=50, random_state=0, n_init='auto')
 
         self.tfidf = TfidfVectorizer(max_features=100, stop_words='english')
         self.make_features = make_features
@@ -153,14 +156,17 @@ class CatBoostFeatureModel:
         train_remarks = train["remarks"].fillna("")
         self.tfidf.fit(train_remarks)
 
+        coords = train[["latitude", "longitude"]]
+        self.kmeans.fit(coords)
+        
         #Fix down here
 
-        X_train = self.append_tidf(self.make_features(train), train)
+        X_train = self.append_learned_features(self.make_features(train), train)
         y_train = np.log(train["sold_price"])
 
         cat_cols = ["municipality", "house_style", "community"]
 
-        X_val = self.append_tidf(self.make_features(mini_val), mini_val)
+        X_val = self.append_learned_features(self.make_features(mini_val), mini_val)
         Y_val = np.log(mini_val["sold_price"])
         self.model.fit(
             X_train, 
@@ -170,8 +176,9 @@ class CatBoostFeatureModel:
             verbose=True                # Set to True to see the error metric print out as it trains
         )
         return self
-    def append_tidf(self, base_features, raw_data ):
+    def append_learned_features(self, base_features, raw_data ):
 
+        # Getting the tf-idf top rare words
         remarks_clean = raw_data["remarks"].fillna("")
 
         tfidf_matrix = self.tfidf.transform(remarks_clean)
@@ -181,11 +188,22 @@ class CatBoostFeatureModel:
             columns=[f"tfidf_{word}" for word in self.tfidf.get_feature_names_out()],
             index=raw_data.index
         )
-        return pd.concat([base_features, tfidf_df], axis=1)
+
+        #Getting K-Mean clusters
+        coords = raw_data[["latitude", "longitude"]]
+        cluster_series = pd.Series(
+            self.kmeans.predict(coords).astype(str), 
+            index=raw_data.index, 
+            name="cluster_id"
+        )
+        
+        return pd.concat([base_features, tfidf_df, cluster_series], axis=1)
+
+
 
     def predict(self, homes):
-        homes_with_tfidf = self.append_tidf(self.make_features(homes), homes)
-        return np.exp(self.model.predict(homes_with_tfidf))
+        homes_with_learned_features = self.append_learned_features(self.make_features(homes), homes)
+        return np.exp(self.model.predict(homes_with_learned_features))
 
 
 

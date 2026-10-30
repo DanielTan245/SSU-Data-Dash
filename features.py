@@ -16,6 +16,7 @@ Ideas to try:
 import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
+
 PROPERTY_TYPES = ["Condo Apt", "Detached", "Semi-Detached", "Condo Townhouse",
                   "Freehold Townhouse", "Co-Op Apt"]
 
@@ -27,6 +28,33 @@ def square_feet(house_area):
     low = pd.to_numeric(parts[0], errors="coerce")
     high = pd.to_numeric(parts[1], errors="coerce").fillna(low)
     return (low + high) / 2
+
+def add_rotated_coordinates(X_df, raw_homes):
+    """
+    Takes the base feature dataframe (X_df) and the raw data (raw_homes),
+    calculates rotated coordinates, and attaches them.
+    """
+    # 1. Get the original coordinates
+    lat = raw_homes["latitude"]
+    lon = raw_homes["longitude"]
+    
+    # 2. Define the angles you want to test (in degrees)
+    angles_deg = [15, 30, 45, 60]
+    
+    for angle in angles_deg:
+        # Convert to radians
+        theta = np.radians(angle)
+        
+        # Apply the rotation matrix
+        # Note: Longitude is usually X (horizontal), Latitude is Y (vertical)
+        rot_lon = (lon * np.cos(theta)) - (lat * np.sin(theta))
+        rot_lat = (lon * np.sin(theta)) + (lat * np.cos(theta))
+        
+        # 3. Add them as brand new columns to your feature set
+        X_df[f"lon_rot_{angle}"] = rot_lon
+        X_df[f"lat_rot_{angle}"] = rot_lat
+        
+    return X_df
 
 MUNICIPALITIES = [
     "Etobicoke", "North York", "Scarborough", "Toronto", "York"
@@ -79,6 +107,8 @@ def off_market_features(homes):
     # One 0/1 column per property type.
     for kind in PROPERTY_TYPES:
         X["is_" + kind] = (homes["house_type_name"] == kind).astype(int)
+
+    X = add_rotated_coordinates(X, homes)
 
     return X
 
