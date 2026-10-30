@@ -14,7 +14,8 @@ Ideas to try:
 - off-market and list-aware can use different features: list-aware has list_price
 """
 import pandas as pd
-
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
 PROPERTY_TYPES = ["Condo Apt", "Detached", "Semi-Detached", "Condo Townhouse",
                   "Freehold Townhouse", "Co-Op Apt"]
 
@@ -27,8 +28,22 @@ def square_feet(house_area):
     high = pd.to_numeric(parts[1], errors="coerce").fillna(low)
     return (low + high) / 2
 
+MUNICIPALITIES = [
+    "Etobicoke", "North York", "Scarborough", "Toronto", "York"
+]
+
+HOUSE_STYLES = [
+    "1 1/2 Storey", "1 Storey/Apt", "2 1/2 Storey", "2-Storey", "3-Storey", 
+    "Apartment", "Backsplit 3", "Backsplit 4", "Backsplit 5", "Bungalow", 
+    "Bungalow-Raised", "Loft", "Multi-Level", "Sidesplit 3", "Sidesplit 4", 
+    "Stacked Townhse"
+]
 
 def off_market_features(homes):
+    homes["lot_front"] = np.where(homes["lot_front"].isnull(), 0, homes["lot_front"])
+    homes["lot_depth"] = np.where(homes["lot_depth"].isnull(), 0, homes["lot_depth"])
+
+
     """Features for homes with no list price."""
     X = pd.DataFrame(index=homes.index)
     X["square_feet"] = square_feet(homes["house_area"])
@@ -37,13 +52,34 @@ def off_market_features(homes):
     X["parking"] = homes["parking_total"]
     X["latitude"] = homes["latitude"]
     X["longitude"] = homes["longitude"]
+
+    # New predictors
+   
+    X["lot_area"] = homes["lot_front"] * homes["lot_depth"]
+    X["garage"] = homes["garage"]
+
+    # For XG Boost uncomment the code for XG_Boost
+
+    # homes["municipality"] = pd.Categorical(homes["municipality"], categories=MUNICIPALITIES)
+    # homes["house_style"] = pd.Categorical(homes["house_style"], categories=HOUSE_STYLES)
+    # mun_dummies = pd.get_dummies(homes["municipality"], prefix="mun", dtype=int)
+    # style_dummies = pd.get_dummies(homes["house_style"], prefix="style", dtype=int)    
+    # X = pd.concat([X, mun_dummies, style_dummies], axis=1)
+    #End here for XG Boost
+
+
+    #Include this to
+    X["community"] = homes["community"]
+    X["municipality"] = homes["municipality"]
+    X["house_style"] = homes["house_style"]
+    #to here for cat boost
+
     # Months since January 2021, so the model can follow prices over time.
     X["months"] = (homes["date_listed"] - pd.Timestamp("2021-01-01")).dt.days / 30.44
     # One 0/1 column per property type.
     for kind in PROPERTY_TYPES:
         X["is_" + kind] = (homes["house_type_name"] == kind).astype(int)
 
-    
     return X
 
 

@@ -1,7 +1,7 @@
 """Run the whole pipeline. From this folder:
 
     python run.py validate   test the models on the last five months of sales (not including the most recent month)
-    python run.py xgValidate test the model on 2025-12 to 2026-04 (don't include 2026-05; used for final model test after choosing best model)
+    python run.py customValidate test the model on 2025-12 to 2026-04 (don't include 2026-05; used for final model test after choosing best model)
     python run.py report     score those predictions and draw a figure
     python run.py predict    predict the test homes and write the two submission files
     python run.py check      check the submission files before you hand them in
@@ -45,7 +45,7 @@ def validate():
     pd.concat(results).to_csv(path, index=False)
     print(f"Wrote {path.relative_to(ROOT)}")
 
-def xgValidate():
+def customValidate():
     listings = data.load("listings")
     results = []
     for month in VALIDATION_MONTHS:
@@ -198,7 +198,7 @@ def check():
     return check_all(ROOT / "submissions")
 
 
-COMMANDS = {"validate": validate, "report": report, "predict": predict, "check": check, "xgValidate": xgValidate}
+COMMANDS = {"validate": validate, "report": report, "predict": predict, "check": check, "customValidate": customValidate}
 
 if __name__ == "__main__":
     if len(sys.argv) != 2 or sys.argv[1] not in COMMANDS:

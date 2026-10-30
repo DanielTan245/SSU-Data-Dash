@@ -10,25 +10,19 @@ deliberately simple, so you can measure how much your own ideas add.
 import numpy as np
 from sklearn.ensemble import HistGradientBoostingRegressor
 from xgboost import XGBRegressor
-
+from catboost import CatBoostRegressor
 import features
-
-
-def make_model(track):
-    """Return a fresh, untrained model for "off_market" or "list_aware"."""
-    if track == "list_aware":
-        # return ListPriceBaseline()
-        return DanielFeatureModel(features.list_aware_features)   # try this instead
-    # return NearestSalesBaseline(k=10)
-    return DanielFeatureModel(features.off_market_features)       # try this instead
+from sklearn.feature_extraction.text import TfidfVectorizer
+import pandas as pd
 
 def make_model(track):
     """Return a fresh, untrained model for "off_market" or "list_aware"."""
     if track == "list_aware":
         # return ListPriceBaseline()
-        return DanielFeatureModel(features.list_aware_features)   # try this instead
+        # return XGBoostFeatureModel(features.list_aware_features)   # try this instead
+        return CatBoostFeatureModel(features.list_aware_features)
     # return NearestSalesBaseline(k=10)
-    return DanielFeatureModel(features.off_market_features)       # try this instead
+    return CatBoostFeatureModel(features.off_market_features)       # try this instead
 
 
 class ListPriceBaseline:
@@ -100,7 +94,7 @@ class FeatureModel:
     def predict(self, homes):
         return np.exp(self.model.predict(self.make_features(homes)))
 
-class DanielFeatureModel:
+class XGBoostFeatureModel:
     """A machine-learning model (XG boost) on the features in features.py.
 
     It learns log(price) rather than price, so a 10% miss on a cheap condo counts
@@ -117,6 +111,7 @@ class DanielFeatureModel:
             random_state=0
         )
     def fit(self, train, mini_val):
+        print("XG BOOST NOW")
         # self.model.fit(self.make_features(train), np.log(train["sold_price"]))
         X_train = self.make_features(train)
         y_train = np.log(train["sold_price"])
@@ -130,3 +125,68 @@ class DanielFeatureModel:
 
     def predict(self, homes):
         return np.exp(self.model.predict(self.make_features(homes)))
+
+
+
+class CatBoostFeatureModel:
+    """A machine-learning model (XG boost) on the features in features.py.
+
+    It learns log(price) rather than price, so a 10% miss on a cheap condo counts
+    as much as a 10% miss on an expensive house. Not used until you switch it on
+    in make_model().
+    """
+
+    def __init__(self, make_features):
+
+        self.tfidf = TfidfVectorizer(max_features=100, stop_words='english')
+        self.make_features = make_features
+        self.model = CatBoostRegressor(
+            n_estimators=1000,          # Set a high maximum number of trees
+            learning_rate=0.1, 
+            early_stopping_rounds=50,   # Stop if the error doesn't improve for 50 consecutive trees
+            random_state=0,
+            verbose = 100
+        )
+    def fit(self, train, mini_val):
+        print("CAT BOOST NOW")
+        # self.model.fit(self.make_features(train), np.log(train["sold_price"]))
+        train_remarks = train["remarks"].fillna("")
+        self.tfidf.fit(train_remarks)
+
+        #Fix down here
+
+        X_train = self.append_tidf(self.make_features(train), train)
+        y_train = np.log(train["sold_price"])
+
+        cat_cols = ["municipality", "house_style", "community"]
+
+        X_val = self.append_tidf(self.make_features(mini_val), mini_val)
+        Y_val = np.log(mini_val["sold_price"])
+        self.model.fit(
+            X_train, 
+            y_train,
+            cat_features=cat_cols,
+            eval_set=[(X_val, Y_val)],  # The model checks this data to monitor improvement
+            verbose=True                # Set to True to see the error metric print out as it trains
+        )
+        return self
+    def append_tidf(self, base_features, raw_data ):
+
+        remarks_clean = raw_data["remarks"].fillna("")
+
+        tfidf_matrix = self.tfidf.transform(remarks_clean)
+        #Turn it into a df of columns of whether each observation has these values or not
+        tfidf_df = pd.DataFrame(
+            tfidf_matrix.toarray(), 
+            columns=[f"tfidf_{word}" for word in self.tfidf.get_feature_names_out()],
+            index=raw_data.index
+        )
+        return pd.concat([base_features, tfidf_df], axis=1)
+
+    def predict(self, homes):
+        homes_with_tfidf = self.append_tidf(self.make_features(homes), homes)
+        return np.exp(self.model.predict(homes_with_tfidf))
+
+
+
+
