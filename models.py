@@ -20,10 +20,11 @@ def make_model(track):
     """Return a fresh, untrained model for "off_market" or "list_aware"."""
     if track == "list_aware":
         # return ListPriceBaseline()
-        # return XGBoostFeatureModel(features.list_aware_features)   # try this instead
-        return CatBoostFeatureModel(features.list_aware_features)
+        return XGBoostFeatureModel(features.list_aware_features, use_community=True)   # try this instead
+        # return CatBoostFeatureModel(features.list_aware_features)
     # return NearestSalesBaseline(k=10)
-    return CatBoostFeatureModel(features.off_market_features)       # try this instead
+    # return CatBoostFeatureModel(features.off_market_features)       # try this instead
+    return XGBoostFeatureModel(features.off_market_features, use_community=True)
 
 
 class ListPriceBaseline:
@@ -103,29 +104,76 @@ class XGBoostFeatureModel:
     in make_model().
     """
 
-    def __init__(self, make_features):
+    def __init__(self, make_features, use_community=False):
         self.make_features = make_features
+        self.use_community = use_community
+        self.community_categories = None
+        self.house_style_categories = None
+        self.municipality_categories = None
+
         self.model = XGBRegressor(
-            n_estimators=1000,          # Set a high maximum number of trees
-            learning_rate=0.1, 
-            early_stopping_rounds=50,   # Stop if the error doesn't improve for 50 consecutive trees
-            random_state=0
+            n_estimators=1000,
+            learning_rate=0.1,
+            early_stopping_rounds=50,
+            random_state=0,
+            tree_method="hist",
+            enable_categorical=True
         )
+
+    def xgb_features(self, homes):
+        X = self.make_features(homes.copy())
+
+        X["house_style"] = pd.Categorical(
+            X["house_style"],
+            categories=self.house_style_categories
+        )
+
+        X["municipality"] = pd.Categorical(
+            X["municipality"],
+            categories=self.municipality_categories
+        )
+
+        if self.use_community:
+            X["community"] = pd.Categorical(
+                X["community"],
+                categories=self.community_categories
+            )
+        else:
+            X = X.drop(columns=["community"])
+
+        return X
+
     def fit(self, train, mini_val):
         print("XG BOOST NOW")
-        # self.model.fit(self.make_features(train), np.log(train["sold_price"]))
-        X_train = self.make_features(train)
+
+        self.house_style_categories = sorted(
+            train["house_style"].dropna().unique()
+        )
+
+        self.municipality_categories = sorted(
+            train["municipality"].dropna().unique()
+        )
+
+        if self.use_community:
+            self.community_categories = sorted(
+                train["community"].dropna().unique()
+            )
+
+        X_train = self.xgb_features(train)
         y_train = np.log(train["sold_price"])
+
         self.model.fit(
-            X_train, 
+            X_train,
             y_train,
-            eval_set=[(self.make_features(mini_val), np.log(mini_val["sold_price"]))],  # The model checks this data to monitor improvement
-            verbose=True                # Set to True to see the error metric print out as it trains
+            eval_set=[
+                (self.xgb_features(mini_val), np.log(mini_val["sold_price"]))
+            ],
+            verbose=True
         )
         return self
 
     def predict(self, homes):
-        return np.exp(self.model.predict(self.make_features(homes)))
+        return np.exp(self.model.predict(self.xgb_features(homes)))
 
 
 
@@ -164,7 +212,7 @@ class CatBoostFeatureModel:
         X_train = self.append_learned_features(self.make_features(train), train)
         y_train = np.log(train["sold_price"])
 
-        cat_cols = ["municipality", "house_style", "community"]
+        cat_cols = ["municipality", "house_style", "community", "cluster_id"]
 
         X_val = self.append_learned_features(self.make_features(mini_val), mini_val)
         Y_val = np.log(mini_val["sold_price"])
@@ -204,7 +252,3 @@ class CatBoostFeatureModel:
     def predict(self, homes):
         homes_with_learned_features = self.append_learned_features(self.make_features(homes), homes)
         return np.exp(self.model.predict(homes_with_learned_features))
-
-
-
-
