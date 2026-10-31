@@ -16,10 +16,10 @@ import features
 def make_model(track):
     """Return a fresh, untrained model for "off_market" or "list_aware"."""
     if track == "list_aware":
-        return ListPriceBaseline()
-        # return FeatureModel(features.list_aware_features)   # try this instead
-    return NearestSalesBaseline(k=10)
-    # return FeatureModel(features.off_market_features)       # try this instead
+        # return ListPriceBaseline()
+        return FeatureModel(features.list_aware_features)   # try this instead
+    # return NearestSalesBaseline(k=10)
+    return FeatureModel(features.off_market_features)       # try this instead
 
 
 class ListPriceBaseline:
@@ -85,8 +85,9 @@ class FeatureModel:
         self.model = HistGradientBoostingRegressor(random_state=0)
 
     def fit(self, train):
-        self.model.fit(self.make_features(train), np.log(train["sold_price"]))
+        self.past_sales = train   # kept so features can look up past prices
+        self.model.fit(self.make_features(train, self.past_sales), np.log(train["sold_price"]))
         return self
 
     def predict(self, homes):
-        return np.exp(self.model.predict(self.make_features(homes)))
+        return np.exp(self.model.predict(self.make_features(homes, self.past_sales)))
