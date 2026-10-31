@@ -17,7 +17,8 @@ def make_model(track):
     """Return a fresh, untrained model for "off_market" or "list_aware"."""
     if track == "list_aware":
         # return ListPriceBaseline()
-        return FeatureModel(features.list_aware_features)   # try this instead
+        # return FeatureModel(features.list_aware_features)   # try this instead
+        return ListRatioModel(features.list_aware_features)
     # return NearestSalesBaseline(k=10)
     return FeatureModel(features.off_market_features)       # try this instead
 
@@ -91,3 +92,19 @@ class FeatureModel:
 
     def predict(self, homes):
         return np.exp(self.model.predict(self.make_features(homes, self.past_sales)))
+
+
+class ListRatioModel(FeatureModel):
+    """List-aware model: learns how far above or below asking a home sells,
+    log(sold / list), instead of the price itself. The prediction is then
+    list price x the predicted ratio."""
+
+    def fit(self, train):
+        self.past_sales = train
+        X = self.make_features(train, self.past_sales)
+        self.model.fit(X, np.log(train["sold_price"] / train["list_price"]))
+        return self
+
+    def predict(self, homes):
+        X = self.make_features(homes, self.past_sales)
+        return homes["list_price"].to_numpy(dtype=float) * np.exp(self.model.predict(X))
