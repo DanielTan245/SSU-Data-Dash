@@ -83,7 +83,12 @@ class FeatureModel:
 
     def __init__(self, make_features):
         self.make_features = make_features
-        self.model = HistGradientBoostingRegressor(random_state=0)
+        self.model = HistGradientBoostingRegressor(
+            max_iter=1000,        # up to 1000 trees instead of 100
+            learning_rate=0.05,   # each tree corrects a bit less, so more careful steps (default 0.1)
+            max_leaf_nodes=63,    # each tree can split homes into up to 63 groups (default 31)
+            random_state=0,
+        )
 
     def fit(self, train):
         self.past_sales = train   # kept so features can look up past prices
