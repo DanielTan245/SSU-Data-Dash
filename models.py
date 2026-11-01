@@ -15,16 +15,29 @@ import features
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 import pandas as pd
+from comparable_sales import ComparableSalesFeatures
 
 def make_model(track):
     """Return a fresh, untrained model for "off_market" or "list_aware"."""
     if track == "list_aware":
         # return ListPriceBaseline()
-        return XGBoostFeatureModel(features.list_aware_features, use_community=True)   # try this instead
+        return XGBoostFeatureModel(
+            features.list_aware_features,
+            use_community=True,
+            use_comps=False,
+            use_tfidf=True,
+            use_kmeans=False
+        )   # try this instead
         # return CatBoostFeatureModel(features.list_aware_features)
     # return NearestSalesBaseline(k=10)
     # return CatBoostFeatureModel(features.off_market_features)       # try this instead
-    return XGBoostFeatureModel(features.off_market_features, use_community=True)
+    return XGBoostFeatureModel(
+        features.off_market_features,
+        use_community=True,
+        use_comps=False,
+        use_tfidf=True,
+        use_kmeans=False
+    )
 
 
 class ListPriceBaseline:
@@ -104,12 +117,18 @@ class XGBoostFeatureModel:
     in make_model().
     """
 
-    def __init__(self, make_features, use_community=False):
+    def __init__(self, make_features, use_community=False, use_comps=False, use_tfidf=False, use_kmeans=False):
         self.make_features = make_features
         self.use_community = use_community
         self.community_categories = None
         self.house_style_categories = None
         self.municipality_categories = None
+        self.use_comps = use_comps
+        self.comps = ComparableSalesFeatures() if use_comps else None
+        self.use_tfidf = use_tfidf
+        self.tfidf = TfidfVectorizer(max_features=100, stop_words="english") if use_tfidf else None
+        self.use_kmeans = use_kmeans
+        self.kmeans = KMeans(n_clusters=50, random_state=0, n_init="auto") if use_kmeans else None
 
         self.model = XGBRegressor(
             n_estimators=1000,
@@ -141,6 +160,29 @@ class XGBoostFeatureModel:
         else:
             X = X.drop(columns=["community"])
 
+        if self.use_comps:
+            extra = self.comps.transform(homes)
+            X["past_ppsf_12m"] = extra["past_ppsf_12m"].to_numpy()
+            X["past_count_12m"] = extra["past_count_12m"].to_numpy()
+            X["past_level_12m"] = extra["past_level_12m"].to_numpy()
+
+        if self.use_tfidf:
+            tfidf_matrix = self.tfidf.transform(homes["remarks"].fillna("").astype(str))
+
+            tfidf_df = pd.DataFrame(
+                tfidf_matrix.toarray(),
+                columns=[f"tfidf_{word}" for word in self.tfidf.get_feature_names_out()],
+                index=homes.index
+            )
+
+            X = pd.concat([X, tfidf_df], axis=1)
+
+        if self.use_kmeans:
+            X["cluster_id"] = pd.Categorical(
+                self.kmeans.predict(homes[["latitude", "longitude"]]),
+                categories=range(50)
+            )
+
         return X
 
     def fit(self, train, mini_val):
@@ -158,6 +200,15 @@ class XGBoostFeatureModel:
             self.community_categories = sorted(
                 train["community"].dropna().unique()
             )
+
+        if self.use_comps:
+            self.comps.fit(pd.concat([train, mini_val], ignore_index=True))
+
+        if self.use_tfidf:
+            self.tfidf.fit(train["remarks"].fillna("").astype(str))
+
+        if self.use_kmeans:
+            self.kmeans.fit(train[["latitude", "longitude"]])
 
         X_train = self.xgb_features(train)
         y_train = np.log(train["sold_price"])

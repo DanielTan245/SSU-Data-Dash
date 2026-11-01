@@ -1,0 +1,7 @@
+past_level_12m,homes,median_comps,meaning,pct_homes
+0,0,0.0,No usable history,0.0
+1,0,0.0,All historical homes,0.0
+2,1,120.0,Same house type,0.012856775520699408
+3,194,390.0,Same type + area band,2.494214451015685
+4,822,18.0,Same community + type,10.568269478014914
+5,6761,32.0,Community + type + area band,86.9246592954487

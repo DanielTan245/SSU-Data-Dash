@@ -1,0 +1,7 @@
+house_type_name,level_0,level_1,level_2,level_3,level_4,level_5,total,pct_level_5
+Co-Op Apt,0,0,1,34,4,0,39,0.0
+Condo Apt,0,0,0,23,135,3723,3881,95.93
+Condo Townhouse,0,0,0,42,130,324,496,65.32
+Detached,0,0,0,12,269,2027,2308,87.82
+Freehold Townhouse,0,0,0,57,133,119,309,38.51
+Semi-Detached,0,0,0,26,151,568,745,76.24
