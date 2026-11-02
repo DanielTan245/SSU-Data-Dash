@@ -8,8 +8,9 @@ make_model() picks the model for each track. The two starting models are baselin
 deliberately simple, so you can measure how much your own ideas add.
 """
 import numpy as np
+import pandas as pd
 from sklearn.ensemble import HistGradientBoostingRegressor
-
+from sklearn.feature_extraction.text import TfidfVectorizer
 import features
 
 
@@ -81,8 +82,10 @@ class FeatureModel:
     in make_model().
     """
 
-    def __init__(self, make_features):
+    def __init__(self, make_features, use_categories=False, use_text=True):
         self.make_features = make_features
+        self.use_categories = use_categories   # Step 3g: house style and municipality
+        self.use_text = use_text               # Step 3h: words in the listing description
         self.model = HistGradientBoostingRegressor(
             max_iter=1000,        # up to 1000 trees instead of 100
             learning_rate=0.05,   # each tree corrects a bit less, so more careful steps (default 0.1)
@@ -90,13 +93,35 @@ class FeatureModel:
             random_state=0,
         )
 
-    def fit(self, train):
+    def prepare(self, train):
+        """Learn, from the training sales only, everything the features need."""
         self.past_sales = train   # kept so features can look up past prices
-        self.model.fit(self.make_features(train, self.past_sales), np.log(train["sold_price"]))
+        # Step 3g: the list of known categories (a new one later is treated as missing)
+        self.categories = {column: sorted(train[column].astype(str).unique())
+                           for column in ["house_style", "municipality"]}
+        # Step 3h: the 100 most useful words in the training descriptions
+        self.words = TfidfVectorizer(max_features=100, stop_words="english")
+        self.words.fit(train["remarks"].fillna(""))
+
+    def build_X(self, homes):
+        """The table of features for these homes."""
+        X = self.make_features(homes, self.past_sales)
+        if self.use_categories:
+            for column, known in self.categories.items():
+                X[column] = pd.Categorical(homes[column].astype(str), categories=known)
+        if self.use_text:
+            scores = self.words.transform(homes["remarks"].fillna(""))
+            names = ["word_" + w for w in self.words.get_feature_names_out()]
+            X = pd.concat([X, pd.DataFrame(scores.toarray(), index=homes.index, columns=names)], axis=1)
+        return X
+
+    def fit(self, train):
+        self.prepare(train)
+        self.model.fit(self.build_X(train), np.log(train["sold_price"]))
         return self
 
     def predict(self, homes):
-        return np.exp(self.model.predict(self.make_features(homes, self.past_sales)))
+        return np.exp(self.model.predict(self.build_X(homes)))
 
 
 class ListRatioModel(FeatureModel):
@@ -105,11 +130,9 @@ class ListRatioModel(FeatureModel):
     list price x the predicted ratio."""
 
     def fit(self, train):
-        self.past_sales = train
-        X = self.make_features(train, self.past_sales)
-        self.model.fit(X, np.log(train["sold_price"] / train["list_price"]))
+        self.prepare(train)
+        self.model.fit(self.build_X(train), np.log(train["sold_price"] / train["list_price"]))
         return self
 
     def predict(self, homes):
-        X = self.make_features(homes, self.past_sales)
-        return homes["list_price"].to_numpy(dtype=float) * np.exp(self.model.predict(X))
+        return homes["list_price"].to_numpy(dtype=float) * np.exp(self.model.predict(self.build_X(homes)))
