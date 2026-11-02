@@ -123,6 +123,8 @@ class FeatureModel:
     def predict(self, homes):
         return np.exp(self.model.predict(self.build_X(homes)))
 
+    
+
 
 class ListRatioModel(FeatureModel):
     """List-aware model: learns how far above or below asking a home sells,

@@ -65,7 +65,6 @@ def list_aware_features(homes, past_sales = None):
 
 
 
-
 def month_number(dates):
     """Months since January 2021: Jan 2021 = 0, Feb 2021 = 1, ..."""
     return (dates.dt.year - 2021) * 12 + dates.dt.month - 1
