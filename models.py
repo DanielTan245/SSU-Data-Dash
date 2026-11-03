@@ -82,7 +82,7 @@ class FeatureModel:
     in make_model().
     """
 
-    def __init__(self, make_features, use_categories=False, use_text=True):
+    def __init__(self, make_features, use_categories=True, use_text=True):
         self.make_features = make_features
         self.use_categories = use_categories   # Step 3g: house style and municipality
         self.use_text = use_text               # Step 3h: words in the listing description
@@ -98,7 +98,7 @@ class FeatureModel:
         self.past_sales = train   # kept so features can look up past prices
         # Step 3g: the list of known categories (a new one later is treated as missing)
         self.categories = {column: sorted(train[column].astype(str).unique())
-                           for column in ["house_style", "municipality"]}
+                           for column in ["community"]}
         # Step 3h: the 100 most useful words in the training descriptions
         self.words = TfidfVectorizer(max_features=100, stop_words="english")
         self.words.fit(train["remarks"].fillna(""))
