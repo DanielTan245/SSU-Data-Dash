@@ -52,6 +52,8 @@ def off_market_features(homes, past_sales = None):
     if past_sales is not None:
         X["comm_type_level"] = community_price_level(homes, past_sales, ["community", "house_type_name"])
         X["comm_level"] = community_price_level(homes, past_sales, ["community"])
+        X["block_level"] = community_price_level(add_block(homes), add_block(past_sales),
+                                                 ["block", "house_type_name"], window=24)
     return X
 
     
@@ -111,3 +113,10 @@ def community_price_level(homes, past_sales, group, window=12):
     n = total_n[row, m] - total_n[row, first]
     level = np.where(found & (n > 0), s / np.maximum(n, 1), np.nan)
     return pd.Series(level, index=homes.index)
+
+
+def add_block(table):
+    """Add a "block" column: latitude and longitude rounded to 3 decimals, a square
+    about 100 m wide. Homes in the same condo building fall in the same block."""
+    block = table["latitude"].round(3).astype(str) + "_" + table["longitude"].round(3).astype(str)
+    return table.assign(block=block)
