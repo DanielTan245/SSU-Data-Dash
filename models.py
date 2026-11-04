@@ -84,8 +84,8 @@ class FeatureModel:
 
     def __init__(self, make_features, use_categories=True, use_text=True):
         self.make_features = make_features
-        self.use_categories = use_categories   # Step 3g: house style and municipality
-        self.use_text = use_text               # Step 3h: words in the listing description
+        self.use_categories = use_categories   # house style and municipality
+        self.use_text = use_text               # words in the listing description
         self.model = HistGradientBoostingRegressor(
             max_iter=1000,        # up to 1000 trees instead of 100
             learning_rate=0.05,   # each tree corrects a bit less, so more careful steps (default 0.1)
@@ -96,10 +96,10 @@ class FeatureModel:
     def prepare(self, train):
         """Learn, from the training sales only, everything the features need."""
         self.past_sales = train   # kept so features can look up past prices
-        # Step 3g: the list of known categories (a new one later is treated as missing)
+        # the list of known categories (a new one later is treated as missing)
         self.categories = {column: sorted(train[column].astype(str).unique())
                            for column in ["community"]}
-        # Step 3h: the 100 most useful words in the training descriptions
+        # the 100 most useful words in the training descriptions
         self.words = TfidfVectorizer(max_features=100, stop_words="english")
         self.words.fit(train["remarks"].fillna(""))
 
