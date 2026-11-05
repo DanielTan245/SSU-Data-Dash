@@ -111,48 +111,61 @@ class XGBoostFeatureModel:
     as much as a 10% miss on an expensive house. Not used until you switch it on
     in make_model().
     """
+    CATEGORICAL_COLS = ["community", "municipality", "house_style"]
 
-    def __init__(self, make_features):
+    def __init__(self, make_features, use_text = True):
         self.make_features = make_features
+        self.use_text = use_text
+        self.categories = {}
+        self.past_sales = None
+        self.words = TfidfVectorizer(max_features=100, stop_words="english")
         self.model = XGBRegressor(
             n_estimators=1000,          # Set a high maximum number of trees
             learning_rate=0.1, 
             early_stopping_rounds=50,   # Stop if the error doesn't improve for 50 consecutive trees
             random_state=0,
-            enbale_categorical = True,
+            enable_categorical = True,
             tree_method = "hist",
         )
-    CATEGORICAL_COLS = ["community", "municipality", "house_style"]
+    
+    def prepare(self, train):
+        """Learn everything the features need from training sales only."""
+        self.past_sales = train
+        X_raw = self.make_features(train.copy(), self.past_sales)
+        self.categories = {
+            c: sorted(X_raw[c].dropna().astype(str).unique())
+            for c in self.CATEGORICAL_COLS if c in X_raw.columns
+        }
+        if self.use_text:
+            self.words.fit(train["remarks"].fillna(""))
 
-    def prep(self, df):
-        X = self.make_features(df).copy()
+    def build_X(self, homes):
+        X = self.make_features(homes.copy(), self.past_sales)
         for c in self.CATEGORICAL_COLS:
             if c in X.columns:
-                X[c] = pd.Categorical(X[c], categories=self.categories[c])
+                X[c] = pd.Categorical(X[c].where(X[c].notna()).astype(object), categories=self.categories[c])
+        if self.use_text:
+            scores = self.words.transform(homes["remarks"].fillna(""))
+            names = ["word_" + w for w in self.words.get_feature_names_out()]
+            text_df = pd.DataFrame(scores.toarray(), index=homes.index, columns=names)
+            X = pd.concat([X, text_df], axis=1)
         return X
     
     def fit(self, train, mini_val=None):
         print("XG BOOST NOW")
+        print("FIT CALLED, rows:", len(train), "features:", self.make_features.__name__)
         if mini_val is None:
             train, mini_val = split_mini_val(train)
-        X_train_raw = self.make_features(train)
-
-        self.categories = {
-        c: sorted(X_train_raw[c].dropna().unique())
-        for c in self.CATEGORICAL_COLS if c in X_train_raw.columns
-        }
-        X_train = self.prep(train)
-        y_train = np.log(train["sold_price"])
+        self.prepare(train)
         self.model.fit(
-            X_train, 
-            y_train,
-            eval_set=[(self.prep(mini_val), np.log(mini_val["sold_price"]))],  # The model checks this data to monitor improvement
-            verbose=True                # Set to True to see the error metric print out as it trains
+            self.build_X(train), np.log(train["sold_price"]),
+            eval_set=[(self.build_X(mini_val), np.log(mini_val["sold_price"]))],
+            verbose=True,
         )
         return self
 
     def predict(self, homes):
-        return np.exp(self.model.predict(self.prep(homes)))
+        return np.exp(self.model.predict(self.build_X(homes)))
 
 
 
@@ -234,7 +247,5 @@ class CatBoostFeatureModel:
     def predict(self, homes):
         homes_with_learned_features = self.append_learned_features(self.make_features(homes), homes)
         return np.exp(self.model.predict(homes_with_learned_features))
-
-
 
 
