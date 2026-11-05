@@ -16,14 +16,23 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 import pandas as pd
 
+def split_mini_val(train, frac=0.1):
+            """Hold out the most recent sales for early stopping."""
+            train = train.sort_values("date_sold")
+            cut = int(len(train) * (1 - frac))
+            return train.iloc[:cut], train.iloc[cut:]
+
+
+
 def make_model(track):
     """Return a fresh, untrained model for "off_market" or "list_aware"."""
     if track == "list_aware":
         # return ListPriceBaseline()
-        # return XGBoostFeatureModel(features.list_aware_features)   # try this instead
-        return CatBoostFeatureModel(features.list_aware_features)
-    # return NearestSalesBaseline(k=10)
-    return CatBoostFeatureModel(features.off_market_features)       # try this instead
+        return XGBoostFeatureModel(features.list_aware_features)   # try this instead
+        #return CatBoostFeatureModel(features.list_aware_features)
+    #return NearestSalesBaseline(k=10)
+    #return CatBoostFeatureModel(features.off_market_features)       # try this instead
+    return XGBoostFeatureModel(features.off_market_features)
 
 
 class ListPriceBaseline:
@@ -109,23 +118,42 @@ class XGBoostFeatureModel:
             n_estimators=1000,          # Set a high maximum number of trees
             learning_rate=0.1, 
             early_stopping_rounds=50,   # Stop if the error doesn't improve for 50 consecutive trees
-            random_state=0
+            random_state=0,
+            enbale_categorical = True,
+            tree_method = "hist",
         )
-    def fit(self, train, mini_val):
+    CATEGORICAL_COLS = ["community", "municipality", "house_style"]
+
+    def prep(self, df):
+        X = self.make_features(df).copy()
+        for c in self.CATEGORICAL_COLS:
+            if c in X.columns:
+                X[c] = pd.Categorical(X[c], categories=self.categories[c])
+        return X
+    
+    def fit(self, train, mini_val=None):
         print("XG BOOST NOW")
-        # self.model.fit(self.make_features(train), np.log(train["sold_price"]))
-        X_train = self.make_features(train)
+        if mini_val is None:
+            train, mini_val = split_mini_val(train)
+        X_train_raw = self.make_features(train)
+
+        self.categories = {
+        c: sorted(X_train_raw[c].dropna().unique())
+        for c in self.CATEGORICAL_COLS if c in X_train_raw.columns
+        }
+        X_train = self.prep(train)
         y_train = np.log(train["sold_price"])
         self.model.fit(
             X_train, 
             y_train,
-            eval_set=[(self.make_features(mini_val), np.log(mini_val["sold_price"]))],  # The model checks this data to monitor improvement
+            eval_set=[(self.prep(mini_val), np.log(mini_val["sold_price"]))],  # The model checks this data to monitor improvement
             verbose=True                # Set to True to see the error metric print out as it trains
         )
         return self
 
     def predict(self, homes):
-        return np.exp(self.model.predict(self.make_features(homes)))
+        return np.exp(self.model.predict(self.prep(homes)))
+
 
 
 
@@ -140,7 +168,6 @@ class CatBoostFeatureModel:
     def __init__(self, make_features):
         # 1. Initialize the K-Means model (e.g., 50 custom neighborhoods)
         self.kmeans = KMeans(n_clusters=50, random_state=0, n_init='auto')
-
         self.tfidf = TfidfVectorizer(max_features=100, stop_words='english')
         self.make_features = make_features
         self.model = CatBoostRegressor(
@@ -150,9 +177,12 @@ class CatBoostFeatureModel:
             random_state=0,
             verbose = 100
         )
-    def fit(self, train, mini_val):
+    
+    def fit(self, train, mini_val=None):
         print("CAT BOOST NOW")
-        # self.model.fit(self.make_features(train), np.log(train["sold_price"]))
+        if mini_val is None:
+            train, mini_val = split_mini_val(train)
+        
         train_remarks = train["remarks"].fillna("")
         self.tfidf.fit(train_remarks)
 
