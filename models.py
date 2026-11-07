@@ -28,11 +28,12 @@ def make_model(track):
     """Return a fresh, untrained model for "off_market" or "list_aware"."""
     if track == "list_aware":
         # return ListPriceBaseline()
-        return XGBoostFeatureModel(features.list_aware_features)   # try this instead
+        return XGBoostListRatioModel(features.list_aware_features)   # try this instead
         #return CatBoostFeatureModel(features.list_aware_features)
     #return NearestSalesBaseline(k=10)
     #return CatBoostFeatureModel(features.off_market_features)       # try this instead
-    return XGBoostFeatureModel(features.off_market_features)
+    #return XGBoostFeatureModel(features.off_market_features)
+    return FeatureModel_2(features.off_market_features)
 
 
 class ListPriceBaseline:
@@ -111,7 +112,7 @@ class XGBoostFeatureModel:
     as much as a 10% miss on an expensive house. Not used until you switch it on
     in make_model().
     """
-    CATEGORICAL_COLS = ["community", "municipality", "house_style"]
+    CATEGORICAL_COLS = ["municipality", "house_style", "community"]
 
     def __init__(self, make_features, use_text = True):
         self.make_features = make_features
@@ -121,11 +122,14 @@ class XGBoostFeatureModel:
         self.words = TfidfVectorizer(max_features=100, stop_words="english")
         self.model = XGBRegressor(
             n_estimators=1000,          # Set a high maximum number of trees
-            learning_rate=0.1, 
+            learning_rate=0.05,  
             early_stopping_rounds=50,   # Stop if the error doesn't improve for 50 consecutive trees
             random_state=0,
             enable_categorical = True,
             tree_method = "hist",
+            grow_policy="lossguide",
+            max_leaves=67,
+            max_depth=0,
         )
     
     def prepare(self, train):
@@ -154,6 +158,7 @@ class XGBoostFeatureModel:
     def fit(self, train, mini_val=None):
         print("XG BOOST NOW")
         print("FIT CALLED, rows:", len(train), "features:", self.make_features.__name__)
+        full_train = train
         if mini_val is None:
             train, mini_val = split_mini_val(train)
         self.prepare(train)
@@ -162,11 +167,18 @@ class XGBoostFeatureModel:
             eval_set=[(self.build_X(mini_val), np.log(mini_val["sold_price"]))],
             verbose=True,
         )
+        self.past_sales = full_train 
         return self
 
     def predict(self, homes):
         return np.exp(self.model.predict(self.build_X(homes)))
 
+class XGBoostListRatioModel(XGBoostFeatureModel):
+    def target(self, df):
+        return np.log(df["sold_price"] / df["list_price"])
+
+    def to_price(self, homes, raw_pred):
+        return homes["list_price"].to_numpy(dtype=float) * np.exp(raw_pred)
 
 
 
@@ -248,4 +260,44 @@ class CatBoostFeatureModel:
         homes_with_learned_features = self.append_learned_features(self.make_features(homes), homes)
         return np.exp(self.model.predict(homes_with_learned_features))
 
+
+
+class FeatureModel_2:
+    def __init__(self, make_features, use_categories=True, use_text=True):
+        self.make_features = make_features
+        self.use_categories = use_categories
+        self.use_text = use_text
+        self.model = HistGradientBoostingRegressor(
+            max_iter=1000,
+            learning_rate=0.05,
+            max_leaf_nodes=63,
+            random_state=0,
+            categorical_features="from_dtype",
+        )
+
+    def prepare(self, train):
+        self.past_sales = train
+        self.categories = {column: sorted(train[column].astype(str).unique())
+                           for column in ["community", "municipality", "house_style"]}
+        self.words = TfidfVectorizer(max_features=100, stop_words="english")
+        self.words.fit(train["remarks"].fillna(""))
+
+    def build_X(self, homes):
+        X = self.make_features(homes.copy(), self.past_sales)
+        if self.use_categories:
+            for column, known in self.categories.items():
+                X[column] = pd.Categorical(homes[column].astype(str), categories=known)
+        if self.use_text:
+            scores = self.words.transform(homes["remarks"].fillna(""))
+            names = ["word_" + w for w in self.words.get_feature_names_out()]
+            X = pd.concat([X, pd.DataFrame(scores.toarray(), index=homes.index, columns=names)], axis=1)
+        return X
+
+    def fit(self, train, mini_val=None):
+        self.prepare(train)
+        self.model.fit(self.build_X(train), np.log(train["sold_price"]))
+        return self
+
+    def predict(self, homes):
+        return np.exp(self.model.predict(self.build_X(homes)))
 

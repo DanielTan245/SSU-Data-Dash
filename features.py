@@ -137,6 +137,9 @@ def off_market_features(homes, past_sales = None):
    
     X["lot_area"] = homes["lot_front"] * homes["lot_depth"]
     X["garage"] = homes["garage"]
+    X["area_is_range"] = homes["house_area"].astype(str).str.contains("-").astype(int)
+    X["lot_front"] = homes["lot_front"]
+    X["lot_depth"] = homes["lot_depth"]
 
     # For XG Boost uncomment the code for XG_Boost
 
