@@ -21,8 +21,6 @@ from check_submission import check_all
 
 ROOT = Path(__file__).parent
 TRACKS = ["off_market", "list_aware"]
-# Walk-forward validation: each of these months is predicted by models trained only
-# on the sales before that month, the same way the real test works.
 VALIDATION_MONTHS = pd.period_range("2025-12", "2026-05", freq="M")
 
 

@@ -1,18 +1,3 @@
-"""EDIT ME: turn a table of homes into numbers a model can learn from.
-
-Each function gets a table of homes with the columns of its test file (so never
-sold_price or date_sold) and returns a table of numbers, one row per home.
-FeatureModel in models.py uses them; switch it on in make_model() to try your features.
-
-Ideas to try:
-- lot size: lot_front * lot_depth (empty for condos, which is fine for tree models)
-- garage, house_style, municipality
-- how pricey a community is: the median price per square foot of its past sales
-  (work it out from the training sales only, never from the homes you predict)
-- how prices have moved recently in the area or for that property type
-- words in the remarks, such as "renovated" or "needs work"
-- off-market and list-aware can use different features: list-aware has list_price
-"""
 import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -43,26 +28,16 @@ def add_rotated_coordinates(X_df, raw_homes):
     Takes the base feature dataframe (X_df) and the raw data (raw_homes),
     calculates rotated coordinates, and attaches them.
     """
-    # 1. Get the original coordinates
     lat = raw_homes["latitude"]
     lon = raw_homes["longitude"]
-    
-    # 2. Define the angles you want to test (in degrees)
     angles_deg = [15, 30, 45, 60]
     
     for angle in angles_deg:
-        # Convert to radians
         theta = np.radians(angle)
-        
-        # Apply the rotation matrix
-        # Note: Longitude is usually X (horizontal), Latitude is Y (vertical)
         rot_lon = (lon * np.cos(theta)) - (lat * np.sin(theta))
         rot_lat = (lon * np.sin(theta)) + (lat * np.cos(theta))
-        
-        # 3. Add them as brand new columns to your feature set
         X_df[f"lon_rot_{angle}"] = rot_lon
-        X_df[f"lat_rot_{angle}"] = rot_lat
-        
+        X_df[f"lat_rot_{angle}"] = rot_lat    
     return X_df
 
 def month_number(dates):
@@ -73,7 +48,6 @@ def totals_before(table, months):
         """Column m = running total over all months BEFORE m (months 0 .. m-1)."""
         table = table.reindex(columns=months).fillna(0)
         return table.cumsum(axis=1).shift(1, axis=1).fillna(0).to_numpy()
-
 
 def add_block(table):
     """Add a "block" column: latitude and longitude rounded to 3 decimals, a square
@@ -132,47 +106,24 @@ def off_market_features(homes, past_sales = None):
     X["parking"] = homes["parking_total"]
     X["latitude"] = homes["latitude"]
     X["longitude"] = homes["longitude"]
-
-    # New predictors
-   
+    X = add_rotated_coordinates(X, homes)
     X["lot_area"] = homes["lot_front"] * homes["lot_depth"]
     X["garage"] = homes["garage"]
     X["area_is_range"] = homes["house_area"].astype(str).str.contains("-").astype(int)
     X["lot_front"] = homes["lot_front"]
     X["lot_depth"] = homes["lot_depth"]
-
-    # For XG Boost uncomment the code for XG_Boost
-
-    # homes["municipality"] = pd.Categorical(homes["municipality"], categories=MUNICIPALITIES)
-    # homes["house_style"] = pd.Categorical(homes["house_style"], categories=HOUSE_STYLES)
-    # mun_dummies = pd.get_dummies(homes["municipality"], prefix="mun", dtype=int)
-    # style_dummies = pd.get_dummies(homes["house_style"], prefix="style", dtype=int)    
-    # X = pd.concat([X, mun_dummies, style_dummies], axis=1)
-    #End here for XG Boost
-
-
-    #Include this to
     X["community"] = homes["community"]
     X["municipality"] = homes["municipality"]
     X["house_style"] = homes["house_style"]
-    #to here for cat boost
-
-    # Months since January 2021, so the model can follow prices over time.
-    X["months"] = (homes["date_listed"] - pd.Timestamp("2021-01-01")).dt.days / 30.44
-    # One 0/1 column per property type.
+    X["months"] = (homes["date_listed"] - pd.Timestamp("2021-01-01")).dt.days / 30.44 # Months since January 2021, so the model can follow prices over time.
     for kind in PROPERTY_TYPES:
         X["is_" + kind] = (homes["house_type_name"] == kind).astype(int)
-
-    X = add_rotated_coordinates(X, homes)
-
-    #ported features from gradient boosting
     X["listing_month"] = homes["date_listed"].dt.month
     if past_sales is not None:
         X["comm_type_level"] = community_price_level(homes, past_sales, ["community", "house_type_name"])
         X["comm_level"] = community_price_level(homes, past_sales, ["community"])
         X["block_level"] = community_price_level(add_block(homes), add_block(past_sales),
                                                  ["block", "house_type_name"], window=24)
-
     return X
 
 
