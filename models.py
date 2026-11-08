@@ -32,8 +32,8 @@ def make_model(track):
         #return CatBoostFeatureModel(features.list_aware_features)
     #return NearestSalesBaseline(k=10)
     #return CatBoostFeatureModel(features.off_market_features)       # try this instead
-    #return XGBoostFeatureModel(features.off_market_features)
-    return FeatureModel_2(features.off_market_features)
+    return XGBoostFeatureModel(features.off_market_features)
+    #return FeatureModel_2(features.off_market_features)
 
 
 class ListPriceBaseline:
@@ -123,7 +123,7 @@ class XGBoostFeatureModel:
         self.model = XGBRegressor(
             n_estimators=1000,          # Set a high maximum number of trees
             learning_rate=0.05,  
-            early_stopping_rounds=50,   # Stop if the error doesn't improve for 50 consecutive trees
+            #early_stopping_rounds=50,   # Stop if the error doesn't improve for 50 consecutive trees
             random_state=0,
             enable_categorical = True,
             tree_method = "hist",
@@ -159,15 +159,16 @@ class XGBoostFeatureModel:
         print("XG BOOST NOW")
         print("FIT CALLED, rows:", len(train), "features:", self.make_features.__name__)
         full_train = train
-        if mini_val is None:
-            train, mini_val = split_mini_val(train)
+        # if mini_val is None:
+        #     train, mini_val = split_mini_val(train)
         self.prepare(train)
+        eval_set = None if mini_val is None else [(self.build_X(mini_val), np.log(mini_val["sold_price"]))]
         self.model.fit(
             self.build_X(train), np.log(train["sold_price"]),
-            eval_set=[(self.build_X(mini_val), np.log(mini_val["sold_price"]))],
+            eval_set=eval_set,
             verbose=True,
         )
-        self.past_sales = full_train 
+        self.past_sales = full_train
         return self
 
     def predict(self, homes):

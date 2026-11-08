@@ -23,7 +23,7 @@ ROOT = Path(__file__).parent
 TRACKS = ["off_market", "list_aware"]
 # Walk-forward validation: each of these months is predicted by models trained only
 # on the sales before that month, the same way the real test works.
-VALIDATION_MONTHS = pd.period_range("2025-12", "2026-04", freq="M")
+VALIDATION_MONTHS = pd.period_range("2025-12", "2026-05", freq="M")
 
 
 def validate():
@@ -100,7 +100,7 @@ def metrics(predictions):
 
 
 def report():
-    path = ROOT / "outputs" / "val_predictions.csv"
+    path = ROOT / "outputs" / "validation_predictions.csv"
     if not path.exists():
         sys.exit(f"{path} does not exist yet: run `python run.py validate` first")
     predictions = pd.read_csv(path)
