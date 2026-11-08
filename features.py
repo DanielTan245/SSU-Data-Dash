@@ -115,14 +115,14 @@ def off_market_features(homes, past_sales = None):
     X["community"] = homes["community"]
     X["municipality"] = homes["municipality"]
     X["house_style"] = homes["house_style"]
-    X["months"] = (homes["date_listed"] - pd.Timestamp("2021-01-01")).dt.days / 30.44 # Months since January 2021, so the model can follow prices over time.
+    X["num_month_since_jan_2021"] = (homes["date_listed"] - pd.Timestamp("2021-01-01")).dt.days / 30.44 # Months since January 2021, so the model can follow prices over time.
     for kind in PROPERTY_TYPES:
         X["is_" + kind] = (homes["house_type_name"] == kind).astype(int)
     X["listing_month"] = homes["date_listed"].dt.month
     if past_sales is not None:
-        X["comm_type_level"] = community_price_level(homes, past_sales, ["community", "house_type_name"])
-        X["comm_level"] = community_price_level(homes, past_sales, ["community"])
-        X["block_level"] = community_price_level(add_block(homes), add_block(past_sales),
+        X["avg_community_and_housing_type_price_per_sq_ft_logged"] = community_price_level(homes, past_sales, ["community", "house_type_name"])
+        X["avg_community_price_per_sq_ft_logged"] = community_price_level(homes, past_sales, ["community"])
+        X["avg_neighborhood_price_per_sq_ft_logged"] = community_price_level(add_block(homes), add_block(past_sales),
                                                  ["block", "house_type_name"], window=24)
     return X
 

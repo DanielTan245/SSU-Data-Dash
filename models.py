@@ -16,8 +16,8 @@ def split_mini_val(train, frac=0.1):
 def make_model(track):
     """Return a fresh, untrained model for "off_market" or "list_aware"."""
     if track == "list_aware":
-        return XGBoostListRatioModel(features.list_aware_features)
-    return XGBoostFeatureModel(features.off_market_features)
+        return XGBoostListRatioModel(features.list_aware_features, track)
+    return XGBoostFeatureModel(features.off_market_features, track)
 
 
 class XGBoostFeatureModel:
@@ -29,14 +29,19 @@ class XGBoostFeatureModel:
     """
     CATEGORICAL_COLS = ["municipality", "house_style", "community"]
 
-    def __init__(self, make_features, use_text = True):
+    def __init__(self, make_features, track, use_text = True ):
         self.make_features = make_features
+        self.track = track
         self.use_text = use_text
         self.categories = {}
         self.past_sales = None
         self.words = TfidfVectorizer(max_features=100, stop_words="english")
+        if self.track == "list_aware":
+             num_iterations = 422
+        else:
+             num_iterations = 1000
         self.model = XGBRegressor(
-            n_estimators=1000,          # Set a high maximum number of trees
+            n_estimators= num_iterations,          # Set a high maximum number of trees
             learning_rate=0.05,  
             #early_stopping_rounds=50,   # Stop if the error doesn't improve for 50 consecutive trees
             random_state=0,
@@ -66,8 +71,8 @@ class XGBoostFeatureModel:
         if self.use_text:
             scores = self.words.transform(homes["remarks"].fillna(""))
             names = ["word_" + w for w in self.words.get_feature_names_out()]
-            text_df = pd.DataFrame(scores.toarray(), index=homes.index, columns=names)
-            X = pd.concat([X, text_df], axis=1)
+            remark_word_rarity_score = pd.DataFrame(scores.toarray(), index=homes.index, columns=names)
+            X = pd.concat([X, remark_word_rarity_score], axis=1)
         return X
     
     def fit(self, train, mini_val=None):
