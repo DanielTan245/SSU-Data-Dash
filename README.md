@@ -1,70 +1,49 @@
-# SSU Data Dash: predict Toronto home prices
-
-Start with the case handout, [`handout.md`](handout.md), and the judging rubric, [`rubric.md`](rubric.md).
-
-Two tracks:
-- **Off-market:** value a home with no list price.
-- **List-aware:** predict a listed home's sale price, knowing its list price.
-
-Train on 150,000 sales (January 2021 to May 2026). Predict homes that sold June to September 2026.
-
-**Data:** [huggingface.co/datasets/Baliyang/SSU_data_dash](https://huggingface.co/datasets/Baliyang/SSU_data_dash).
-All of it is synthetic.
+# SSU Data Dash 2026: XGBROS Toronto home-price prediction 
+By: Daniel Tan, Jerry Zhou, Quinton Gao, Vincent Li
 
 ## Setup
 
-Python 3.10 or newer (3.11+ on macOS 27):
+Python 3.12 or newer. Install the dependencies:
 
 ```
-pip install -r requirements.txt
+pip install -r requirements.txt xgboost catboost
 ```
 
-The data downloads itself on first use. No Python? Use the
-[Colab notebook](https://colab.research.google.com/github/erwinzhang7/SSU-Data-Dash/blob/main/notebooks/quickstart.ipynb).
-Prefer R? See `r/baseline.R`.
-
-## Commands
+or, with [uv](https://docs.astral.sh/uv/):
 
 ```
-python run.py validate   # test on Dec 2025 to May 2026
-python run.py report     # results table and a figure
-python run.py predict    # write both submission files
-python run.py check      # check them
+uv sync
+```
+
+The data downloads itself from [Hugging Face](https://huggingface.co/datasets/Baliyang/SSU_data_dash) the first time you run the code.
+
+## Running the code
+
+From the project folder:
+
+```
+python run.py validate   # walk-forward validation, Dec 2025 to May 2026
+python run.py report     # scores, LaTeX table and figure from the validation run
+python run.py predict    # train on all sales and write both submission files
+python run.py check      # check the submission files
 ```
 
 On Windows, use `py` if `python` is not found.
 
-## What to edit
+To regenerate only the submission files, run `predict` and then `check`.
 
-- **`features.py`**: the features.
-- **`models.py`**: the models. Two simple baselines to beat: list price (list-aware) and the
-  10 nearest earlier sales (off-market). `FeatureModel` (gradient-boosted trees) is ready to switch on.
+## Where to find the output
 
-## Validation
+| What | Where |
+|---|---|
+| **Submission files** | `submissions/submission_off_market.csv`, `submissions/submission_list_aware.csv` |
+| Validation predictions | `outputs/validation_predictions.csv` |
+| Validation scores | `reports/validation_report.md` (also `.json`, and `results_table.tex` for the report) |
+| Error-by-price figure | `figures/error_by_price_range.png` |
 
-`validate` predicts each month from the sales before it, as in the real test. A random split lets
-the model see the future and makes your score look better than it is. Judges compare your
-validation error with your hidden-test error.
-
-## Submission
-
-One PDF report (template: `report/report.tex`, 4 pages max) that links to:
-1. your video on YouTube, 5 minutes max (unlisted is fine, not private);
-2. your GitHub repository (public, or shared with the organisers), holding your code and two files:
+Each submission file has one row per test home:
 
 ```
-submissions/submission_off_market.csv    one row per home in test_off_market
-submissions/submission_list_aware.csv    one row per home in test_list_aware
-
 ml_num,predicted_price
 SYN-0123456,815000
 ```
-
-`predict` writes both; run `check` before you hand in. Deadline: see the case email.
-
-## Rules
-
-- Outside data only if it covers May 2026 or earlier. List every source with its URL.
-- Neighbourhoods, coordinates and streets are synthetic, so map data will not line up.
-- No real listing or sales records.
-- Do not try to recover the hidden test prices.
