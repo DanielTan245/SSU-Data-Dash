@@ -1,4 +1,4 @@
-# SSU Data Dash 2026: XGBROS Toronto home-price prediction 
+# SSU Data Dash 2026: XGBros Toronto home-price prediction 
 By: Daniel Tan, Jerry Zhou, Quinton Gao, Vincent Li
 
 ## Setup
